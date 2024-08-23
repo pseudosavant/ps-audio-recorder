@@ -9,9 +9,7 @@
   <meta name='license' content='https://opensource.org/licenses/MIT'>
   <meta name='viewport' content='width=device-width, initial-scale=1.0' />
   <link rel='shortcut icon' href='data:image/png;base64,PLACEHOLDER_ICON' />
-  <style type='text/css' primary>
-    /* CSS styles here */
-    /* Replace with your actual styles, removing video-specific ones and adjusting for audio */
+  <style type='text/css'>
     body {
       font-family: sans-serif;
       margin: 0;
@@ -33,9 +31,10 @@
       margin-top: 10px;
     }
     button {
-      background: none;
+      padding: 10px;
       border: none;
       cursor: pointer;
+      border-radius: 5px;
     }
     .links {
       margin-top: 20px;
@@ -48,6 +47,19 @@
       text-decoration: none;
       color: black;
     }
+    .recording-controls {
+      display: flex;
+      justify-content: center;
+      margin-top: 20px;
+    }
+    .btn-start-stop-recording {
+      background-color: #007bff;
+      color: white;
+    }
+    .btn-recording-active {
+      background-color: #F00;
+      color: white;
+    }
   </style>
 </head>
 <body>
@@ -57,6 +69,9 @@
       <button class='btn-play-pause'>Play/Pause</button>
       <button class='btn-stop'>Stop</button>
       <button class='btn-volume'>Volume</button>
+    </div>
+    <div class='recording-controls'>
+      <button class='btn-start-stop-recording'>⏺️ Start Recording</button>
     </div>
   </div>
   <section class='links'></section>
@@ -68,6 +83,7 @@
 
       const $player = document.querySelector('.player');
       const $links = document.querySelector('.links');
+      const $startStopButton = document.querySelector('.btn-start-stop-recording');
 
       const getSupportedAudioTypes = () => {
         const supported = {
@@ -154,6 +170,35 @@
       });
 
       createLinks();
+
+      // Function to update the recording button's state
+      const updateRecordingButton = async () => {
+        const response = await fetch('/api/is-recording');
+        const json = await response.json();
+        if (json.is_recording) {
+          $startStopButton.classList.add('btn-recording-active');
+          $startStopButton.classList.remove('btn-start-stop-recording');
+          $startStopButton.textContent = '⏹️ Stop Recording';
+        } else {
+          $startStopButton.classList.remove('btn-recording-active');
+          $startStopButton.classList.add('btn-start-stop-recording');
+          $startStopButton.textContent = '⏺️ Start Recording';
+        }
+      };
+
+      // Handle Start/Stop Recording button click
+      $startStopButton.addEventListener('click', async () => {
+        const isRecording = $startStopButton.classList.contains('btn-recording-active');
+        const url = isRecording ? '/api/stop-recording' : '/api/start-recording';
+        const response = await fetch(url, { method: 'POST' });
+        const json = await response.json();
+        console.log(isRecording ? 'Stop Recording:' : 'Start Recording:', json);
+        updateRecordingButton();  // Update button state based on new recording status
+      });
+
+      // Initial update of the recording button
+      updateRecordingButton();
+
     })(this);
   </script>
 </body>
