@@ -4,6 +4,10 @@ import time
 import os
 import re
 from datetime import datetime
+from flask import Flask, jsonify
+
+# Flask app setup
+app = Flask(__name__)
 
 # GPIO setup
 BUTTON_PIN = 17
@@ -50,7 +54,6 @@ def get_optimal_settings(device):
         hw_params = result.stderr
         log(f"Hardware parameters for {device}:\n{hw_params}")
         
-        # Get optimal format
         formats = re.findall(r'FORMAT: (.+)', hw_params)
         optimal_format = None
         if formats:
@@ -61,7 +64,6 @@ def get_optimal_settings(device):
                     optimal_format = fmt
                     break
         
-        # Get optimal channel count
         channels = re.findall(r'CHANNELS: (.+)', hw_params)
         optimal_channels = 1
         if channels:
@@ -77,7 +79,6 @@ def get_optimal_settings(device):
 
 def setup_gpio():
     GPIO.setwarnings(False)
-    GPIO.cleanup()
     GPIO.setmode(GPIO.BCM)
     GPIO.setup(BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
     GPIO.setup(LED_PIN, GPIO.OUT)
@@ -134,6 +135,29 @@ def cleanup():
     GPIO.cleanup()
     log("Script terminated")
 
+@app.route('/start-recording', methods=['POST'])
+def start_recording_api():
+    try:
+        start_recording()
+        return jsonify({"status": "success", "message": "Recording started"}), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/stop-recording', methods=['POST'])
+def stop_recording_api():
+    try:
+        stop_recording()
+        return jsonify({"status": "success", "message": "Recording stopped"}), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/is-recording', methods=['GET'])
+def is_recording_api():
+    try:
+        return jsonify({"is_recording": recording}), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 def main():
     try:
         setup_gpio()
@@ -145,6 +169,11 @@ def main():
         else:
             log("Using default audio device. Unable to determine optimal settings.")
         
+        # Start Flask app in a separate thread to avoid blocking the main loop
+        from threading import Thread
+        flask_thread = Thread(target=app.run, kwargs={'host': '0.0.0.0', 'port': 5000})
+        flask_thread.start()
+
         while True:
             if GPIO.input(BUTTON_PIN) == GPIO.LOW:
                 time.sleep(0.05)  # Debounce
