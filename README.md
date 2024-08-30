@@ -144,4 +144,4 @@ Contributions are welcome! Please fork the repository and submit a pull request.
 
 ## Author
 
-- Paul Ellis (https://github.com/pseudosavant)
+- &copy; Paul Ellis (https://github.com/pseudosavant)
