@@ -15,6 +15,7 @@ This project is designed to provide a simple, one-button audio recording solutio
 
 ![20240823_160720440_iOS](https://github.com/user-attachments/assets/ba07e18c-5c4a-4262-af0e-cf5810953efa)
 ![20240823_013657887_iOS](https://github.com/user-attachments/assets/d78349c0-2f40-4147-99dd-79c960172251)
+![image](https://github.com/user-attachments/assets/2687ea14-ceeb-4996-ab73-8669055ab1e1)
 
 
 ## Default GPIO Pin Configuration
