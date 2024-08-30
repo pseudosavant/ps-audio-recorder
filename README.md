@@ -11,6 +11,12 @@ This project is designed to provide a simple, one-button audio recording solutio
 - **Web Interface**: Allows for starting/stopping recordings and playing back recorded audio through a web browser.
 - **SMB File Sharing**: Automatically shares recorded audio files over a network via an anonymous Windows (SMB) file share.
 
+## Images
+
+![20240823_160720440_iOS](https://github.com/user-attachments/assets/ba07e18c-5c4a-4262-af0e-cf5810953efa)
+![20240823_013657887_iOS](https://github.com/user-attachments/assets/d78349c0-2f40-4147-99dd-79c960172251)
+
+
 ## Default GPIO Pin Configuration
 
 - **Button**: GPIO pin 17.
