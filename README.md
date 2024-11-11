@@ -37,7 +37,7 @@ This project is designed to provide a simple, one-button audio recording solutio
 - RPi.GPIO (installed via `apt`)
 - nginx
 - Samba
-- arecord utility
+- arecord utility (from alsa-utils)
 - A web browser for accessing the web interface
 - Network connection for SMB file sharing
 
@@ -51,7 +51,7 @@ This project is designed to provide a simple, one-button audio recording solutio
 2. Install the necessary dependencies:
    ```sh
    sudo apt update
-   sudo apt install python3 python3-flask python3-rpi.gpio nginx samba arecord
+   sudo apt install python3 python3-flask python3-rpi.gpio nginx samba alsa-utils
    ```
 
 3. Configure Samba to share the `~/recordings` directory over SMB. Update `/etc/samba/smb.conf` with:
