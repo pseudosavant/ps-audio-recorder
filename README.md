@@ -1,154 +1,104 @@
-# One-Button Audio Recording Solution
+# One-Button Audio Recorder
 
 ## Overview
 
-This project is designed to provide a simple, one-button audio recording solution using a UAC USB audio interface connected to a Raspberry Pi Zero W. The system is controlled via a physical button and an LED indicator, with a web interface for additional control and playback of recorded audio files. The project also includes an anonymous Windows (SMB) file share for easy access to the recordings.
+Headless Raspberry Pi recorder triggered by a Bluetooth HID clicker (or any keyboard) and optionally indicating state via a TP-Link Kasa smart bulb. Audio is captured with `arecord` and encoded on-the-fly to MP3 using `lame`. Designed for fast, reliable single-action start/stop with clear visual feedback and easily accessible files (optionally via SMB share).
 
-## Features
+Designed and tested primarily on a Raspberry Pi Zero 2 W (sufficient CPU for real-time MP3 at preset extreme). It should run on any full-size Raspberry Pi. NOTE: The original Pi Zero W (v1) often cannot keep up with live MP3 encoding at the current quality setting.
 
-- **One-Button Recording**: Start and stop audio recording with a single button connected to the Raspberry Pi.
-- **LED Indicator**: Provides visual feedback on the recording status. The LED is connected to a GPIO pin and will likely require a resistor.
-- **Web Interface**: Allows for starting/stopping recordings and playing back recorded audio through a web browser.
-- **SMB File Sharing**: Automatically shares recorded audio files over a network via an anonymous Windows (SMB) file share.
+## Key Features
 
-## Images
+- Bluetooth clicker / wireless keyboard toggle (no GPIO wiring)
+- MP3 pipeline: `arecord` -> `lame --preset extreme`
+- Auto USB audio capability probing
+- Kasa smart bulb tally (solid red while recording) with state restore
+- Auto-discovery of bulb named "Recording Light" (same subnet)
+- Safe timestamped filenames (`audio-recorder-YYYY-MM-DD-HH-MM-SS.mp3`)
+- Auto-stop on Bluetooth device reconnection
+- Systemd friendly, concise logging (`/var/log/audio-recorder.log`)
+- Tested with Kasa KL125 color bulb
 
-![20240823_160720440_iOS](https://github.com/user-attachments/assets/ba07e18c-5c4a-4262-af0e-cf5810953efa)
-![20240823_013657887_iOS](https://github.com/user-attachments/assets/d78349c0-2f40-4147-99dd-79c960172251)
-![image](https://github.com/user-attachments/assets/2687ea14-ceeb-4996-ab73-8669055ab1e1)
+## Setup (Quick)
 
+```sh
+git clone https://github.com/yourrepo/ps-audio-recorder.git
+cd ps-audio-recorder
+chmod +x setup.sh
+./setup.sh
+```
 
-## Default GPIO Pin Configuration
+The script:
 
-- **Button**: GPIO pin 17.
-- **LED**: GPIO pin 18.
-  - **Note**: The LED will likely require a resistor to prevent damage.
+- Installs required APT packages (ALSA, BlueZ, lame, etc.)
+- Installs Python deps (e.g. python-kasa)
+- Creates `/srv/recordings` with group permissions
+- Touches/permissions the log file
+- Optionally installs & enables the systemd service (if you confirm)
+- Leaves config in `config.py` (edit if needed: bulb name, key code, etc.)
 
-## Recording File Location
+After running setup, pair your Bluetooth clicker (most show up as a HID keyboard). If pairing wasn’t done automatically inside the script, you can still use `bluetoothctl` manually; usually no config changes are needed if the remote emits key code 115 (F14). If not, update `TRIGGER_KEY_CODE` in `config.py`.
 
-- Recordings are saved in the `~/recordings` directory on the Raspberry Pi.
+## Bluetooth Clicker
+A generic Bluetooth “selfie” / presentation clicker works (appears as a tiny keyboard). These are inexpensive (typically < $5). Example model used for testing: https://www.amazon.com/gp/product/B0C6GXZRTJ  
+Most send a single key code (often 115) which the recorder treats as the toggle.
 
-## Requirements
+## Kasa Smart Bulb
 
-- Raspberry Pi Zero W
-- UAC USB Audio Interface
-- Python 3.x
-- Flask (installed via `apt`)
-- RPi.GPIO (installed via `apt`)
-- nginx
-- Samba
-- arecord utility (from alsa-utils)
-- A web browser for accessing the web interface
-- Network connection for SMB file sharing
-
-## Installation
-
-1. Clone this repository to your Raspberry Pi:
-   ```sh
-   git clone https://github.com/yourusername/one-button-audio-recorder.git
-   ```
-
-2. Install the necessary dependencies:
-   ```sh
-   sudo apt update
-   sudo apt install python3 python3-flask python3-rpi.gpio nginx samba alsa-utils
-   ```
-
-3. Configure Samba to share the `~/recordings` directory over SMB. Update `/etc/samba/smb.conf` with:
-   ```
-   [recordings]
-   path = /home/pi/recordings
-   browseable = yes
-   read only = no
-   guest ok = yes
-   ```
-   Then restart the Samba service:
-   ```sh
-   sudo systemctl restart smbd
-   ```
-
-4. Configure nginx to proxy requests to the Flask app. Add the following text to the `/etc/nginx/sites-available/default` file:
-   ```
-   location /api/ {
-       proxy_pass http://localhost:5000/;  # Forward to your Flask app
-       proxy_set_header Host $host;
-       proxy_set_header X-Real-IP $remote_addr;
-       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-       proxy_set_header X-Forwarded-Proto $scheme;
-   }
-   ```
-   Then restart the nginx service:
-   ```sh
-   sudo systemctl restart nginx
-   ```
-
-5. Connect the button and LED to the default GPIO pins as described above.
-
-6. Run the Python script to start the recording service:
-   ```sh
-   python3 /home/pi/one-button-audio-recorder/ps-audio-recorder.py
-   ```
-
-## Running as a System Service
-
-To run the script as a system service, follow these steps:
-
-1. Create a service file for the script:
-   ```sh
-   sudo nano /etc/systemd/system/audio-recorder.service
-   ```
-
-2. Add the following content to the file:
-   ```
-   [Unit]
-   Description=One-Button Audio Recorder
-   After=network.target
-
-   [Service]
-   ExecStart=/usr/bin/python3 /home/pi/one-button-audio-recorder/ps-audio-recorder.py
-   WorkingDirectory=/home/pi/one-button-audio-recorder
-   StandardOutput=inherit
-   StandardError=inherit
-   Restart=always
-   User=pi
-
-   [Install]
-   WantedBy=multi-user.target
-   ```
-
-3. Reload the systemd daemon and enable the service:
-   ```sh
-   sudo systemctl daemon-reload
-   sudo systemctl enable audio-recorder.service
-   sudo systemctl start audio-recorder.service
-   ```
-
-4. The script will now automatically run as a service on boot.
+Automatically searches the local subnet for a TP-Link Kasa bulb whose alias matches `Recording Light` (`Config.BULB_NAME`). Tested with KL125. Other color Kasa models should work.
 
 ## Usage
 
-### Physical Button Control
+Manual run (same script systemd uses):
+```sh
+~/ps-audio-recorder/start-recorder.sh
+```
+This script creates/activates the virtual environment and launches the recorder.  
+- Press the Bluetooth remote button (mapped key code 115) or spacebar (if interactive TTY) to toggle recording.
+- MP3 files appear in `/srv/recordings`.
 
-- **Start/Stop Recording**: Press the button connected to the specified GPIO pin to start or stop recording.
-- **LED Indicator**: The LED will light up during recording and turn off when recording stops.
+Systemd service (already installed/enabled by setup.sh unless you skipped it):
+```sh
+sudo systemctl status ps-audio-recorder
+journalctl -u ps-audio-recorder -f
+```
 
-### Web Interface
+## Configuration (config.py)
 
-1. Open a web browser and navigate to the IP address of your Raspberry Pi. e.g. http://audio-recorder.local/audio-player.html 
-2. Use the interface to start or stop recordings and play back previously recorded audio files.
+Adjust:
 
-### SMB File Sharing
+- SAMPLE_RATE / AUDIO_FORMAT fallback
+- TRIGGER_KEY_CODE (remote key)
+- BULB_NAME (default "Recording Light")
+- RECORDING_EXTENSION (mp3)
+- TIMESTAMP_FORMAT / RECORDING_PREFIX
+- RECORDING_DIR / LOG_FILE
 
-- Access recorded audio files from any device on the network by connecting to the Raspberry Pi's SMB file share. The files are shared anonymously, so no login credentials are required.
+## Recording Details
+
+Pipeline example:
+
+```
+arecord -r 48000 -t wav -f S32_LE -c 2 ... | lame --ignorelength --preset extreme --silent - file.mp3
+```
+
+Files created with group write (umask 002) for easy sharing (e.g. Samba/NFS if you add it later).
+
+## Troubleshooting (Condensed)
+
+- Remote not toggling: run `sudo evtest` to confirm key code; update `TRIGGER_KEY_CODE`.
+- Audio device: `arecord -l` to verify card presence.
+- Empty/short MP3: check log for early `arecord` or `lame` exit.
+- Bulb not found: confirm alias, same subnet, run `python -m kasa discover`.
+
+## Hardware / Performance Notes
+
+- Zero 2 W and larger Pis: OK at `--preset extreme`.
+- Original Zero W: likely too slow; lower quality (e.g. `-V5`) or record WAV then transcode offline.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Contributing
-
-Contributions are welcome! Please fork the repository and submit a pull request.
+MIT (see LICENSE).
 
 ## Author
 
-- &copy; Paul Ellis (https://github.com/pseudosavant)
+© John Paul Ellis (https://github.com/pseudosavant)
