@@ -18,6 +18,10 @@ Designed and tested primarily on a Raspberry Pi Zero 2 W (sufficient CPU for rea
 - Systemd friendly, concise logging (`/var/log/audio-recorder.log`)
 - Tested with Kasa KL125 color bulb
 
+## Image
+![image](https://github.com/user-attachments/assets/adbafada-a799-4dba-8491-93f92c2bb26a)
+
+
 ## Setup (Quick)
 
 ```sh
