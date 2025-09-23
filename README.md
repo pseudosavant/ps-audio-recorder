@@ -17,6 +17,7 @@ Designed and tested primarily on a Raspberry Pi Zero 2 W (sufficient CPU for rea
 - Auto-stop on Bluetooth device reconnection
 - Systemd friendly, concise logging (`/var/log/audio-recorder.log`)
 - Tested with Kasa KL125 color bulb
+- Optional: ReplayGain auto-processor that watches `/srv/recordings` and normalizes MP3 loudness via mp3gain
 
 ## Setup (Quick)
 
@@ -35,11 +36,13 @@ The script:
 - Touches/permissions the log file
 - Optionally installs & enables the systemd service (if you confirm)
 - Leaves config in `config.py` (edit if needed: bulb name, key code, etc.)
+- Installs ReplayGain watcher service (mp3gain + inotify-tools) that monitors `/srv/recordings`
 
 After running setup, pair your Bluetooth clicker (most show up as a HID keyboard). If pairing wasn’t done automatically inside the script, you can still use `bluetoothctl` manually; usually no config changes are needed if the remote emits key code 115 (F14). If not, update `TRIGGER_KEY_CODE` in `config.py`.
 
 ## Bluetooth Clicker
-A generic Bluetooth “selfie” / presentation clicker works (appears as a tiny keyboard). These are inexpensive (typically < $5). Example model used for testing: https://www.amazon.com/gp/product/B0C6GXZRTJ  
+
+A generic Bluetooth “selfie” / presentation clicker works (appears as a tiny keyboard). These are inexpensive (typically < $5). Example model used for testing: [Amazon product link](https://www.amazon.com/gp/product/B0C6GXZRTJ).  
 Most send a single key code (often 115) which the recorder treats as the toggle.
 
 ## Kasa Smart Bulb
@@ -53,6 +56,7 @@ Manual run (same script systemd uses):
 ~/ps-audio-recorder/start-recorder.sh
 ```
 This script creates/activates the virtual environment and launches the recorder.  
+
 - Press the Bluetooth remote button (mapped key code 115) or spacebar (if interactive TTY) to toggle recording.
 - MP3 files appear in `/srv/recordings`.
 
@@ -60,6 +64,37 @@ Systemd service (already installed/enabled by setup.sh unless you skipped it):
 ```sh
 sudo systemctl status ps-audio-recorder
 journalctl -u ps-audio-recorder -f
+```
+
+### ReplayGain Auto-Processor
+
+- Service name: `ps-replaygain`
+- Watches: `/srv/recordings` (recursive)
+- Processes: `.mp3` files only, skips temp/hidden
+- Tool: `mp3gain` (track mode, clipping protection, undo metadata)
+
+Commands:
+```sh
+sudo systemctl status ps-replaygain
+sudo journalctl -u ps-replaygain -f
+```
+
+Config file (optional): `~/ps-audio-recorder/replaygain-watcher.env`
+See `ps-audio-recorder/replaygain-watcher.env.example` for fields:
+
+- WATCH_PATH (default `/srv/recordings`)
+- RECURSIVE (1)
+- LOG_LEVEL (info|debug|error)
+- PROCESS_MODE (track|album)
+- EXCLUDE_REGEX (temp/partial patterns)
+- NICE_LEVEL, IONICE_CLASS (resource knobs)
+
+#### Enable verbose logs (optional)
+
+```sh
+echo 'LOG_LEVEL=debug' | sudo tee -a ~/ps-audio-recorder/replaygain-watcher.env
+sudo systemctl restart ps-replaygain
+sudo journalctl -u ps-replaygain -n 100 --no-pager
 ```
 
 ## Configuration (config.py)
@@ -77,11 +112,9 @@ Adjust:
 
 Pipeline example:
 
-```
+```sh
 arecord -r 48000 -t wav -f S32_LE -c 2 ... | lame --ignorelength --preset extreme --silent - file.mp3
 ```
-
-Files created with group write (umask 002) for easy sharing (e.g. Samba/NFS if you add it later).
 
 ## Troubleshooting (Condensed)
 
@@ -89,6 +122,7 @@ Files created with group write (umask 002) for easy sharing (e.g. Samba/NFS if y
 - Audio device: `arecord -l` to verify card presence.
 - Empty/short MP3: check log for early `arecord` or `lame` exit.
 - Bulb not found: confirm alias, same subnet, run `python -m kasa discover`.
+- ReplayGain: ensure packages `mp3gain` and `inotify-tools` are installed; verify watch path exists and owned by `pi`.
 
 ## Hardware / Performance Notes
 
@@ -101,4 +135,4 @@ MIT (see LICENSE).
 
 ## Author
 
-© John Paul Ellis (https://github.com/pseudosavant)
+© John Paul Ellis ([github.com/pseudosavant](https://github.com/pseudosavant))

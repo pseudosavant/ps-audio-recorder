@@ -3,6 +3,22 @@
 # Exit on any error
 set -e
 
+# Resolve the directory of this script to allow running from any CWD
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Normalize text file to UNIX LF endings to avoid shebang /bin/bash^M issues
+normalize_unix() {
+    local f="$1"
+    if [ -f "$f" ]; then
+        # Try dos2unix if available, otherwise use sed fallback
+        if command -v dos2unix >/dev/null 2>&1; then
+            dos2unix -q "$f" || true
+        else
+            sed -i 's/\r$//' "$f" || true
+        fi
+    fi
+}
+
 # Must run as root
 if [ "$EUID" -ne 0 ]; then
     echo "Please run as root"
@@ -16,7 +32,9 @@ apt install -y \
     nginx \
     samba \
     python3-evdev \
-    python3-venv
+    python3-venv \
+    inotify-tools \
+    mp3gain
 
 # Add pi user to audio group
 usermod -a -G audio pi
@@ -131,12 +149,88 @@ systemctl start ps-audio-recorder
 systemctl restart smbd
 systemctl restart nginx
 
+# ------------------------------
+# ReplayGain Auto-Processor Service
+# ------------------------------
+
+# Install watcher script to home directory if not already there
+install -d -m 0755 /home/pi/ps-audio-recorder
+
+SRC_WATCHER_SH="$SCRIPT_DIR/ps-audio-recorder/replaygain-watcher.sh"
+DEST_WATCHER_SH="/home/pi/ps-audio-recorder/replaygain-watcher.sh"
+if [ "$SRC_WATCHER_SH" != "$DEST_WATCHER_SH" ]; then
+    install -m 0755 "$SRC_WATCHER_SH" "$DEST_WATCHER_SH"
+else
+    chmod 0755 "$DEST_WATCHER_SH" || true
+fi
+normalize_unix "$DEST_WATCHER_SH"
+
+SRC_ENV_EXAMPLE="$SCRIPT_DIR/ps-audio-recorder/replaygain-watcher.env.example"
+DEST_ENV="/home/pi/ps-audio-recorder/replaygain-watcher.env"
+if [ ! -f "$DEST_ENV" ]; then
+    if [ -f "$SRC_ENV_EXAMPLE" ] && [ "$SRC_ENV_EXAMPLE" != "$DEST_ENV" ]; then
+        install -m 0644 "$SRC_ENV_EXAMPLE" "$DEST_ENV"
+    fi
+fi
+normalize_unix "$DEST_ENV"
+
+chown -R pi:pi /home/pi/ps-audio-recorder
+
+cat > /etc/systemd/system/ps-replaygain.service << 'EOF'
+[Unit]
+Description=ReplayGain Auto-Processor for /srv/recordings
+After=network.target
+RequiresMountsFor=/srv/recordings
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+EnvironmentFile=-/home/pi/ps-audio-recorder/replaygain-watcher.env
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/bin
+ExecStart=/bin/bash /home/pi/ps-audio-recorder/replaygain-watcher.sh
+WorkingDirectory=/home/pi/ps-audio-recorder
+StandardOutput=journal
+StandardError=journal
+Nice=15
+IOSchedulingClass=idle
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+ProtectKernelModules=yes
+PrivateDevices=true
+LockPersonality=true
+RestrictRealtime=true
+SystemCallFilter=@default
+SystemCallErrorNumber=EPERM
+ReadWritePaths=/srv/recordings /home/pi/ps-audio-recorder
+ProtectClock=yes
+IPAddressDeny=any
+RestrictAddressFamilies=AF_UNIX
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+chmod 644 /etc/systemd/system/ps-replaygain.service
+normalize_unix /etc/systemd/system/ps-replaygain.service
+
+systemctl daemon-reload
+systemctl enable ps-replaygain.service
+systemctl restart ps-replaygain.service || systemctl start ps-replaygain.service
+
 echo "Setup complete!"
 echo ""
 echo "Services status:"
 echo "- Nginx: $(systemctl is-active nginx)"
 echo "- Samba: $(systemctl is-active smbd)"
 echo "- Audio Recorder: $(systemctl is-active ps-audio-recorder)"
+echo "- ReplayGain: $(systemctl is-active ps-replaygain)"
 echo ""
 echo "Verify you can access:"
 echo "- Web: http://$(hostname).local"
