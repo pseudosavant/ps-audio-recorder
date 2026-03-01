@@ -25,16 +25,16 @@ Designed and tested primarily on a Raspberry Pi Zero 2 W (sufficient CPU for rea
 ## Setup (Quick)
 
 ```sh
-git clone https://github.com/yourrepo/ps-audio-recorder.git
+git clone https://github.com/pseudosavant/ps-audio-recorder.git
 cd ps-audio-recorder
-chmod +x setup.sh
-./setup.sh
+chmod +x setup.sh upgrade.sh
+sudo ./setup.sh
 ```
 
 The script:
 
 - Installs required APT packages (ALSA, BlueZ, lame, etc.)
-- Installs Python deps (e.g. python-kasa)
+- Installs/updates Python deps from `ps-audio-recorder/requirements.txt`
 - Creates `/srv/recordings` with group permissions
 - Touches/permissions the log file
 - Installs & enables the systemd service
@@ -43,7 +43,7 @@ The script:
 
 ## Upgrade
 
-Recommended (one command):
+Recommended (one command from repo root):
 ```sh
 ./upgrade.sh
 ```
@@ -78,7 +78,7 @@ This script loads `/etc/ps-audio-recorder/ps-audio-recorder.env`, creates/activa
 - Press the Bluetooth remote button (mapped key code 115) or spacebar (if interactive TTY) to toggle recording.
 - MP3 files appear in `/srv/recordings`.
 
-Systemd service (already installed/enabled by setup.sh unless you skipped it):
+Systemd service (installed/enabled by `setup.sh`):
 ```sh
 sudo systemctl status ps-audio-recorder
 journalctl -u ps-audio-recorder -f
