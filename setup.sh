@@ -6,6 +6,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKUP_SUFFIX="$(date +%Y%m%d_%H%M%S)"
 OVERWRITE_EXISTING=1
+APP_CONFIG_DIR="/etc/ps-audio-recorder"
+APP_ENV_FILE="$APP_CONFIG_DIR/ps-audio-recorder.env"
+SRC_APP_ENV_EXAMPLE="$SCRIPT_DIR/ps-audio-recorder/ps-audio-recorder.env.example"
 
 usage() {
     cat <<'EOF'
@@ -141,6 +144,7 @@ fi
 mkdir -p /srv/recordings
 mkdir -p /var/log
 mkdir -p /var/lib/audio-recorder
+install -d -m 0755 "$APP_CONFIG_DIR"
 
 OWNER_USER="pi"
 if ! id -u "$OWNER_USER" >/dev/null 2>&1; then
@@ -162,6 +166,18 @@ add_user_to_group nobody audiofiles
 chown "$OWNER_USER":audiofiles /srv/recordings
 chmod 775 /srv/recordings
 chmod g+s /srv/recordings
+
+if [[ ! -f "$APP_ENV_FILE" ]]; then
+    if [[ -f "$SRC_APP_ENV_EXAMPLE" ]]; then
+        install -m 0644 "$SRC_APP_ENV_EXAMPLE" "$APP_ENV_FILE"
+        normalize_unix "$APP_ENV_FILE"
+        log "Created recorder env file: $APP_ENV_FILE"
+    else
+        log "Recorder env example missing at $SRC_APP_ENV_EXAMPLE; skipping env file creation"
+    fi
+else
+    log "Recorder env file already exists: $APP_ENV_FILE"
+fi
 
 write_managed_file /etc/nginx/sites-available/default 0644 "nginx site config" <<'EOF'
 server {
@@ -208,6 +224,7 @@ After=network.target
 [Service]
 ExecStart=/home/pi/ps-audio-recorder/start-recorder.sh
 WorkingDirectory=/home/pi/ps-audio-recorder
+EnvironmentFile=-/etc/ps-audio-recorder/ps-audio-recorder.env
 StandardOutput=append:/var/log/audio-recorder.log
 StandardError=append:/var/log/audio-recorder.log
 Restart=always
@@ -314,5 +331,6 @@ echo ""
 echo "Verify you can access:"
 echo "- Web: http://$(hostname).local"
 echo "- Samba: \\\\$(hostname).local\\recordings"
+echo "- Recorder config: $APP_ENV_FILE"
 echo ""
 echo "Note: A reboot is recommended to apply audio configuration changes"

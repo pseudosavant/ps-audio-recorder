@@ -37,11 +37,11 @@ The script:
 - Installs Python deps (e.g. python-kasa)
 - Creates `/srv/recordings` with group permissions
 - Touches/permissions the log file
-- Optionally installs & enables the systemd service (if you confirm)
-- Leaves config in `config.py` (edit if needed: bulb name, key code, etc.)
+- Installs & enables the systemd service
+- Creates `/etc/ps-audio-recorder/ps-audio-recorder.env` for runtime config overrides (preserved on rerun)
 - Installs ReplayGain watcher service (mp3gain + inotify-tools) that monitors `/srv/recordings`
 
-After running setup, pair your Bluetooth clicker (most show up as a HID keyboard). If pairing wasn’t done automatically inside the script, you can still use `bluetoothctl` manually; usually no config changes are needed if the remote emits key code 115 (F14). If not, update `TRIGGER_KEY_CODE` in `config.py`.
+After running setup, pair your Bluetooth clicker (most show up as a HID keyboard). If pairing wasn’t done automatically inside the script, you can still use `bluetoothctl` manually; usually no config changes are needed if the remote emits key code 115 (F14). If not, set `PS_AUDIO_TRIGGER_KEY_CODE` in `/etc/ps-audio-recorder/ps-audio-recorder.env` and restart the service.
 
 ## Bluetooth Clicker
 
@@ -58,7 +58,7 @@ Manual run (same script systemd uses):
 ```sh
 ~/ps-audio-recorder/start-recorder.sh
 ```
-This script creates/activates the virtual environment and launches the recorder.  
+This script loads `/etc/ps-audio-recorder/ps-audio-recorder.env`, creates/activates the virtual environment, and launches the recorder.  
 
 - Press the Bluetooth remote button (mapped key code 115) or spacebar (if interactive TTY) to toggle recording.
 - MP3 files appear in `/srv/recordings`.
@@ -100,16 +100,21 @@ sudo systemctl restart ps-replaygain
 sudo journalctl -u ps-replaygain -n 100 --no-pager
 ```
 
-## Configuration (config.py)
+## Configuration (`/etc/ps-audio-recorder/ps-audio-recorder.env`)
 
 Adjust:
 
-- SAMPLE_RATE / AUDIO_FORMAT fallback
-- TRIGGER_KEY_CODE (remote key)
-- BULB_NAME (default "Recording Light")
-- RECORDING_EXTENSION (mp3)
-- TIMESTAMP_FORMAT / RECORDING_PREFIX
-- RECORDING_DIR / LOG_FILE
+- `PS_AUDIO_SAMPLE_RATE` / `PS_AUDIO_AUDIO_FORMAT` fallback
+- `PS_AUDIO_TRIGGER_KEY_CODE` (remote key)
+- `PS_AUDIO_BULB_NAME` (default `Recording Light`)
+- `PS_AUDIO_RECORDING_EXTENSION` (mp3)
+- `PS_AUDIO_TIMESTAMP_FORMAT` / `PS_AUDIO_RECORDING_PREFIX`
+- `PS_AUDIO_RECORDING_DIR` / `PS_AUDIO_LOG_FILE`
+
+Apply changes:
+```sh
+sudo systemctl restart ps-audio-recorder
+```
 
 ## Recording Details
 
@@ -121,7 +126,7 @@ arecord -r 48000 -t wav -f S32_LE -c 2 ... | lame --ignorelength --preset extrem
 
 ## Troubleshooting (Condensed)
 
-- Remote not toggling: run `sudo evtest` to confirm key code; update `TRIGGER_KEY_CODE`.
+- Remote not toggling: run `sudo evtest` to confirm key code; update `PS_AUDIO_TRIGGER_KEY_CODE` in `/etc/ps-audio-recorder/ps-audio-recorder.env` and restart the service.
 - Audio device: `arecord -l` to verify card presence.
 - Empty/short MP3: check log for early `arecord` or `lame` exit.
 - Bulb not found: confirm alias, same subnet, run `python -m kasa discover`.

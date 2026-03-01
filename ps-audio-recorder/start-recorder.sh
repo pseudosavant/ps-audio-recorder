@@ -1,6 +1,14 @@
 #!/bin/bash
 cd /home/pi/ps-audio-recorder
 
+ENV_FILE=/etc/ps-audio-recorder/ps-audio-recorder.env
+if [ -f "$ENV_FILE" ]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "$ENV_FILE"
+    set +a
+fi
+
 # Create venv and install dependencies if it doesn't exist
 if [ ! -d ".venv" ]; then
     echo "Creating virtual environment..."
