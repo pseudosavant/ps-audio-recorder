@@ -35,8 +35,13 @@ def find_input_devices():
                     key_codes = capabilities[evdev.ecodes.EV_KEY]
                     if Config.TRIGGER_KEY_CODE in key_codes:
                         devices.append(device)
-            except:
+                    else:
+                        device.close()
+                else:
+                    device.close()
+            except Exception as e:
+                log(f"Warning: failed to inspect input device {path}: {e}")
                 continue
-    except:
-        pass
+    except Exception as e:
+        log(f"Warning: failed to enumerate input devices: {e}")
     return devices

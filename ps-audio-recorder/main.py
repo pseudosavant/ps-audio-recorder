@@ -171,8 +171,8 @@ async def main():
                             # Avoid leaking duplicate file descriptors from repeated scans.
                             try:
                                 device.close()
-                            except:
-                                pass
+                            except Exception as e:
+                                log(f"Warning: failed to close duplicate input device {device.path}: {e}")
                 except Exception as e:
                     log(f"Error finding input devices: {str(e)}")
                 
@@ -181,12 +181,12 @@ async def main():
                 for path, device in list(current_devices.items()):
                     try:
                         _ = device.name
-                    except:
+                    except Exception:
                         disconnected.append(path)
                         try:
                             device.close()
-                        except:
-                            pass
+                        except Exception as e:
+                            log(f"Warning: failed to close disconnected input device {path}: {e}")
                 
                 for path in disconnected:
                     log(f"Input device disconnected: {current_devices[path].name}")
@@ -201,8 +201,8 @@ async def main():
                         for path in list(current_devices.keys()):
                             try:
                                 current_devices[path].close()
-                            except:
-                                pass
+                            except Exception as e:
+                                log(f"Warning: failed to close invalid device {path}: {e}")
                             log(f"Removed invalid device at {path}")
                             del current_devices[path]
                         continue
@@ -222,8 +222,8 @@ async def main():
                                 if device == ready_device:
                                     try:
                                         device.close()
-                                    except:
-                                        pass
+                                    except Exception as e:
+                                        log(f"Warning: failed to close ready device {path}: {e}")
                                     log(f"Removed disconnected device at {path}")
                                     del current_devices[path]
                                     break
@@ -255,8 +255,8 @@ async def main():
         for device in current_devices.values():
             try:
                 device.close()
-            except:
-                pass
+            except Exception as e:
+                log(f"Warning: failed to close device during shutdown: {e}")
 
         log("Script terminated")
 
