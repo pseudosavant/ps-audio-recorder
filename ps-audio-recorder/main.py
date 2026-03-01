@@ -167,6 +167,12 @@ async def main():
                         if device.path not in current_devices:
                             log(f"New input device connected: {device.name}")
                             current_devices[device.path] = device
+                        else:
+                            # Avoid leaking duplicate file descriptors from repeated scans.
+                            try:
+                                device.close()
+                            except:
+                                pass
                 except Exception as e:
                     log(f"Error finding input devices: {str(e)}")
                 

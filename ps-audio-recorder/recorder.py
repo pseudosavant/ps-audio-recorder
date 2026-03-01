@@ -1,5 +1,4 @@
 import os
-import time
 import grp
 import subprocess
 from datetime import datetime
@@ -17,6 +16,40 @@ class Recorder:
         self.kasa_device = kasa_device
         self.original_bulb_state = None
         self.encoder_process = None  # lame process
+
+    async def _wait_process(self, process, timeout=None):
+        if process is None:
+            return True
+        try:
+            if timeout is None:
+                await asyncio.to_thread(process.wait)
+            else:
+                await asyncio.to_thread(process.wait, timeout)
+            return True
+        except subprocess.TimeoutExpired:
+            return False
+        except Exception as e:
+            log(f"Warning: Error waiting on process: {str(e)}")
+            return False
+
+    async def _terminate_process(self, process, name, timeout=5):
+        if process is None:
+            return
+        try:
+            process.terminate()
+        except Exception as e:
+            log(f"Warning: Error terminating {name}: {str(e)}")
+            return
+
+        if await self._wait_process(process, timeout):
+            return
+
+        try:
+            process.kill()
+            await self._wait_process(process, 2)
+            log(f"Warning: {name} needed SIGKILL after terminate timeout")
+        except Exception as e:
+            log(f"Warning: Error killing {name}: {str(e)}")
     
     async def start(self):
         if self.recording:
@@ -68,38 +101,23 @@ class Recorder:
                 ]
 
                 log(f"Starting recording pipeline: {' '.join(arecord_command)} | {' '.join(lame_command)}")
-                self.process = subprocess.Popen(arecord_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                self.encoder_process = subprocess.Popen(lame_command, stdin=self.process.stdout, stderr=subprocess.PIPE)
+                self.process = subprocess.Popen(arecord_command, stdout=subprocess.PIPE, stderr=None)
+                self.encoder_process = subprocess.Popen(lame_command, stdin=self.process.stdout, stderr=None)
                 # Detach stdout so arecord doesn't get SIGPIPE when we terminate lame
                 self.process.stdout.close()
 
-                time.sleep(1)
+                await asyncio.sleep(1)
 
                 if self.process.poll() is not None or self.encoder_process.poll() is not None:
-                    # Gather stderr for diagnostics
-                    arecord_err = ""
-                    lame_err = ""
-                    if self.process:
-                        try:
-                            _, aerr = self.process.communicate(timeout=0.2)
-                            arecord_err = aerr.decode(errors="ignore").strip()
-                        except Exception:
-                            pass
-                    if self.encoder_process:
-                        try:
-                            _, lerr = self.encoder_process.communicate(timeout=0.2)
-                            lame_err = lerr.decode(errors="ignore").strip()
-                        except Exception:
-                            pass
-                    log(f"Recording failed to start. arecord err: {arecord_err} lame err: {lame_err}")
+                    arecord_rc = self.process.poll() if self.process else None
+                    lame_rc = self.encoder_process.poll() if self.encoder_process else None
+                    log(f"Recording failed to start. arecord rc: {arecord_rc} lame rc: {lame_rc}")
                     self.recording = False
                     # Cleanup
                     if self.process and self.process.poll() is None:
-                        try: self.process.terminate()
-                        except: pass
+                        await self._terminate_process(self.process, "arecord", timeout=2)
                     if self.encoder_process and self.encoder_process.poll() is None:
-                        try: self.encoder_process.terminate()
-                        except: pass
+                        await self._terminate_process(self.encoder_process, "lame", timeout=2)
                     self.process = None
                     self.encoder_process = None
                     return False
@@ -121,17 +139,9 @@ class Recorder:
             log(f"Error in start_recording: {str(e)}")
             self.recording = False
             if self.process:
-                try:
-                    self.process.terminate()
-                    self.process.wait()
-                except Exception as e2:
-                    log(f"Warning: Error terminating arecord: {str(e2)}")
+                await self._terminate_process(self.process, "arecord", timeout=5)
             if self.encoder_process:
-                try:
-                    self.encoder_process.terminate()
-                    self.encoder_process.wait()
-                except Exception as e3:
-                    log(f"Warning: Error terminating lame: {str(e3)}")
+                await self._terminate_process(self.encoder_process, "lame", timeout=5)
             self.process = None
             self.encoder_process = None
             return False
@@ -151,19 +161,15 @@ class Recorder:
         self.recording = False
         if self.process:
             try:
-                self.process.terminate()
-                self.process.wait(timeout=5)
+                await self._terminate_process(self.process, "arecord", timeout=5)
             except Exception as e:
                 log(f"Warning: Error stopping arecord: {str(e)}")
         if self.encoder_process:
             try:
                 # After arecord ends, lame should finish encoding
-                self.encoder_process.wait(timeout=10)
+                if not await self._wait_process(self.encoder_process, 10):
+                    await self._terminate_process(self.encoder_process, "lame", timeout=2)
             except Exception as e:
-                try:
-                    self.encoder_process.terminate()
-                except:
-                    pass
                 log(f"Warning: Error stopping lame: {str(e)}")
         log("Recording stopped")
         self.process = None
