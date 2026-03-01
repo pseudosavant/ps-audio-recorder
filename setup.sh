@@ -6,9 +6,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKUP_SUFFIX="$(date +%Y%m%d_%H%M%S)"
 OVERWRITE_EXISTING=1
+UPGRADE_MODE=0
 APP_CONFIG_DIR="/etc/ps-audio-recorder"
 APP_ENV_FILE="$APP_CONFIG_DIR/ps-audio-recorder.env"
 SRC_APP_ENV_EXAMPLE="$SCRIPT_DIR/ps-audio-recorder/ps-audio-recorder.env.example"
+APP_HOME="/home/pi/ps-audio-recorder"
+REQUIREMENTS_FILE="$SCRIPT_DIR/ps-audio-recorder/requirements.txt"
 
 usage() {
     cat <<'EOF'
@@ -16,6 +19,7 @@ Usage: ./setup.sh [--no-overwrite]
 
 Options:
   --no-overwrite  Do not replace existing config files; only create missing ones.
+  --upgrade       Force upgrade behavior (restart managed services).
   -h, --help      Show this help text.
 EOF
 }
@@ -24,6 +28,10 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --no-overwrite)
             OVERWRITE_EXISTING=0
+            shift
+            ;;
+        --upgrade)
+            UPGRADE_MODE=1
             shift
             ;;
         -h|--help)
@@ -116,6 +124,34 @@ add_user_to_group() {
     fi
 }
 
+ensure_python_dependencies() {
+    local venv_path="$APP_HOME/.venv"
+    local pip_path="$venv_path/bin/pip"
+
+    if [[ ! -d "$APP_HOME" ]]; then
+        log "App directory not found at $APP_HOME; skipping dependency refresh"
+        return 0
+    fi
+
+    if [[ ! -d "$venv_path" ]]; then
+        log "Creating virtual environment at $venv_path"
+        python3 -m venv "$venv_path" --system-site-packages
+    fi
+
+    if [[ ! -x "$pip_path" ]]; then
+        log "pip not found in venv at $pip_path; skipping dependency refresh"
+        return 0
+    fi
+
+    if [[ -f "$REQUIREMENTS_FILE" ]]; then
+        log "Installing Python dependencies from $REQUIREMENTS_FILE"
+        "$pip_path" install -r "$REQUIREMENTS_FILE"
+    else
+        log "Requirements file not found; installing fallback dependency python-kasa"
+        "$pip_path" install python-kasa
+    fi
+}
+
 if [[ "$EUID" -ne 0 ]]; then
     echo "Please run as root" >&2
     exit 1
@@ -128,8 +164,11 @@ apt install -y \
     samba \
     python3-evdev \
     python3-venv \
+    python3-pip \
     inotify-tools \
     mp3gain
+
+ensure_python_dependencies
 
 # Add pi user to audio group (if present).
 add_user_to_group pi audio
@@ -242,10 +281,19 @@ fi
 
 systemctl daemon-reload
 systemctl enable ps-audio-recorder
-systemctl start ps-audio-recorder
+if [[ "$UPGRADE_MODE" -eq 1 ]]; then
+    systemctl restart ps-audio-recorder || systemctl start ps-audio-recorder
+else
+    systemctl start ps-audio-recorder
+fi
 
-systemctl restart smbd
-systemctl restart nginx
+if [[ "$UPGRADE_MODE" -eq 1 ]]; then
+    systemctl restart smbd || true
+    systemctl restart nginx || true
+else
+    systemctl restart smbd
+    systemctl restart nginx
+fi
 
 # ------------------------------
 # ReplayGain Auto-Processor Service

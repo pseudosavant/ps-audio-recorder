@@ -41,6 +41,21 @@ The script:
 - Creates `/etc/ps-audio-recorder/ps-audio-recorder.env` for runtime config overrides (preserved on rerun)
 - Installs ReplayGain watcher service (mp3gain + inotify-tools) that monitors `/srv/recordings`
 
+## Upgrade
+
+Recommended (one command):
+```sh
+./upgrade.sh
+```
+
+Equivalent manual flow:
+```sh
+git pull --ff-only
+sudo ./setup.sh --upgrade
+```
+
+Upgrade mode refreshes Python dependencies and restarts managed services.
+
 After running setup, pair your Bluetooth clicker (most show up as a HID keyboard). If pairing wasn’t done automatically inside the script, you can still use `bluetoothctl` manually; usually no config changes are needed if the remote emits key code 115 (F14). If not, set `PS_AUDIO_TRIGGER_KEY_CODE` in `/etc/ps-audio-recorder/ps-audio-recorder.env` and restart the service.
 
 ## Bluetooth Clicker
