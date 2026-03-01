@@ -1,16 +1,48 @@
 #!/bin/bash
 
-# Exit on any error
-set -e
+set -euo pipefail
 
-# Resolve the directory of this script to allow running from any CWD
+# Resolve the directory of this script to allow running from any CWD.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BACKUP_SUFFIX="$(date +%Y%m%d_%H%M%S)"
+OVERWRITE_EXISTING=1
 
-# Normalize text file to UNIX LF endings to avoid shebang /bin/bash^M issues
+usage() {
+    cat <<'EOF'
+Usage: ./setup.sh [--no-overwrite]
+
+Options:
+  --no-overwrite  Do not replace existing config files; only create missing ones.
+  -h, --help      Show this help text.
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --no-overwrite)
+            OVERWRITE_EXISTING=0
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            echo "Unknown argument: $1" >&2
+            usage
+            exit 1
+            ;;
+    esac
+done
+
+log() {
+    echo "[setup] $*"
+}
+
+# Normalize text file to UNIX LF endings to avoid shebang /bin/bash^M issues.
 normalize_unix() {
     local f="$1"
-    if [ -f "$f" ]; then
-        # Try dos2unix if available, otherwise use sed fallback
+    if [[ -f "$f" ]]; then
         if command -v dos2unix >/dev/null 2>&1; then
             dos2unix -q "$f" || true
         else
@@ -19,14 +51,74 @@ normalize_unix() {
     fi
 }
 
-# Must run as root
-if [ "$EUID" -ne 0 ]; then
-    echo "Please run as root"
-    exit
+backup_file() {
+    local target="$1"
+    local backup="${target}.bak.${BACKUP_SUFFIX}"
+    if [[ -f "$target" && ! -f "$backup" ]]; then
+        cp -a "$target" "$backup"
+        log "Backed up $target -> $backup"
+    fi
+}
+
+write_managed_file() {
+    local target="$1"
+    local mode="$2"
+    local label="$3"
+    local tmp
+    tmp="$(mktemp)"
+    cat > "$tmp"
+    normalize_unix "$tmp"
+
+    if [[ -f "$target" ]] && cmp -s "$tmp" "$target"; then
+        rm -f "$tmp"
+        log "$label unchanged: $target"
+        return 0
+    fi
+
+    if [[ -f "$target" && "$OVERWRITE_EXISTING" -eq 0 ]]; then
+        rm -f "$tmp"
+        log "Skipping existing $label (--no-overwrite): $target"
+        return 0
+    fi
+
+    if [[ -f "$target" ]]; then
+        backup_file "$target"
+    fi
+
+    install -d -m 0755 "$(dirname "$target")"
+    install -m "$mode" "$tmp" "$target"
+    rm -f "$tmp"
+    log "Wrote $label: $target"
+}
+
+ensure_line_in_file() {
+    local line="$1"
+    local file="$2"
+    touch "$file"
+    if ! grep -Fqx "$line" "$file"; then
+        echo "$line" >> "$file"
+        log "Added line to $file: $line"
+    else
+        log "Line already present in $file: $line"
+    fi
+}
+
+add_user_to_group() {
+    local user="$1"
+    local group="$2"
+    if id -u "$user" >/dev/null 2>&1; then
+        usermod -a -G "$group" "$user"
+    else
+        log "User '$user' not found; skipping group '$group' assignment"
+    fi
+}
+
+if [[ "$EUID" -ne 0 ]]; then
+    echo "Please run as root" >&2
+    exit 1
 fi
 
-# Install required packages
-echo "Installing required packages..."
+log "Installing required packages..."
 apt update
 apt install -y \
     nginx \
@@ -36,43 +128,42 @@ apt install -y \
     inotify-tools \
     mp3gain
 
-# Add pi user to audio group
-usermod -a -G audio pi
+# Add pi user to audio group (if present).
+add_user_to_group pi audio
 
-# Disable onboard audio to ensure USB is default
-echo "blacklist snd_bcm2835" >> /etc/modprobe.d/raspi-blacklist.conf
+# Disable onboard audio to ensure USB is default, without duplicate entries.
+ensure_line_in_file "blacklist snd_bcm2835" /etc/modprobe.d/raspi-blacklist.conf
 
-# Create audiofiles group if it doesn't exist
-if ! getent group audiofiles > /dev/null; then
+if ! getent group audiofiles >/dev/null; then
     groupadd audiofiles
 fi
 
-# Create recordings directory
 mkdir -p /srv/recordings
-
-# Create log directory and file
 mkdir -p /var/log
+mkdir -p /var/lib/audio-recorder
+
+OWNER_USER="pi"
+if ! id -u "$OWNER_USER" >/dev/null 2>&1; then
+    OWNER_USER="root"
+    log "User 'pi' not found; using '$OWNER_USER' for ownership where needed"
+fi
+
 touch /var/log/audio-recorder.log
-chown pi:audiofiles /var/log/audio-recorder.log
+chown "$OWNER_USER":audiofiles /var/log/audio-recorder.log
 chmod 664 /var/log/audio-recorder.log
 
-# Create bulb cache directory
-mkdir -p /var/lib/audio-recorder
-chown pi:audiofiles /var/lib/audio-recorder
+chown "$OWNER_USER":audiofiles /var/lib/audio-recorder
 chmod 775 /var/lib/audio-recorder
 
-# Add users to audiofiles group
-usermod -a -G audiofiles www-data
-usermod -a -G audiofiles pi
-usermod -a -G audiofiles nobody  # for Samba
+add_user_to_group www-data audiofiles
+add_user_to_group pi audiofiles
+add_user_to_group nobody audiofiles
 
-# Set directory ownership and permissions
-chown pi:audiofiles /srv/recordings
+chown "$OWNER_USER":audiofiles /srv/recordings
 chmod 775 /srv/recordings
-chmod g+s /srv/recordings  # Set SGID bit so new files inherit group
+chmod g+s /srv/recordings
 
-# Create Nginx configuration
-cat > /etc/nginx/sites-available/default << 'EOF'
+write_managed_file /etc/nginx/sites-available/default 0644 "nginx site config" <<'EOF'
 server {
         listen 80 default_server;
         listen [::]:80 default_server;
@@ -94,8 +185,7 @@ server {
 }
 EOF
 
-# Create Samba configuration
-cat > /etc/samba/smb.conf << 'EOF'
+write_managed_file /etc/samba/smb.conf 0644 "samba config" <<'EOF'
 [global]
    workgroup = WORKGROUP
    server string = Recording Server
@@ -118,8 +208,7 @@ cat > /etc/samba/smb.conf << 'EOF'
    directory mask = 0775
 EOF
 
-# Create systemd service
-cat > /etc/systemd/system/ps-audio-recorder.service << 'EOF'
+write_managed_file /etc/systemd/system/ps-audio-recorder.service 0644 "recorder systemd unit" <<'EOF'
 [Unit]
 Description=Piano Studio Audio Recorder
 After=network.target
@@ -136,16 +225,16 @@ User=pi
 WantedBy=multi-user.target
 EOF
 
-# Set proper permissions for service file and start script
-chmod 644 /etc/systemd/system/ps-audio-recorder.service
-chmod +x /home/pi/ps-audio-recorder/start-recorder.sh
+if [[ -f /home/pi/ps-audio-recorder/start-recorder.sh ]]; then
+    chmod +x /home/pi/ps-audio-recorder/start-recorder.sh
+else
+    log "start-recorder.sh not found at /home/pi/ps-audio-recorder; skipping chmod"
+fi
 
-# Reload systemd, enable and start service
 systemctl daemon-reload
 systemctl enable ps-audio-recorder
 systemctl start ps-audio-recorder
 
-# Restart other services
 systemctl restart smbd
 systemctl restart nginx
 
@@ -153,12 +242,11 @@ systemctl restart nginx
 # ReplayGain Auto-Processor Service
 # ------------------------------
 
-# Install watcher script to home directory if not already there
 install -d -m 0755 /home/pi/ps-audio-recorder
 
 SRC_WATCHER_SH="$SCRIPT_DIR/ps-audio-recorder/replaygain-watcher.sh"
 DEST_WATCHER_SH="/home/pi/ps-audio-recorder/replaygain-watcher.sh"
-if [ "$SRC_WATCHER_SH" != "$DEST_WATCHER_SH" ]; then
+if [[ "$SRC_WATCHER_SH" != "$DEST_WATCHER_SH" ]]; then
     install -m 0755 "$SRC_WATCHER_SH" "$DEST_WATCHER_SH"
 else
     chmod 0755 "$DEST_WATCHER_SH" || true
@@ -167,16 +255,18 @@ normalize_unix "$DEST_WATCHER_SH"
 
 SRC_ENV_EXAMPLE="$SCRIPT_DIR/ps-audio-recorder/replaygain-watcher.env.example"
 DEST_ENV="/home/pi/ps-audio-recorder/replaygain-watcher.env"
-if [ ! -f "$DEST_ENV" ]; then
-    if [ -f "$SRC_ENV_EXAMPLE" ] && [ "$SRC_ENV_EXAMPLE" != "$DEST_ENV" ]; then
+if [[ ! -f "$DEST_ENV" ]]; then
+    if [[ -f "$SRC_ENV_EXAMPLE" && "$SRC_ENV_EXAMPLE" != "$DEST_ENV" ]]; then
         install -m 0644 "$SRC_ENV_EXAMPLE" "$DEST_ENV"
     fi
 fi
 normalize_unix "$DEST_ENV"
 
-chown -R pi:pi /home/pi/ps-audio-recorder
+if id -u pi >/dev/null 2>&1; then
+    chown -R pi:pi /home/pi/ps-audio-recorder
+fi
 
-cat > /etc/systemd/system/ps-replaygain.service << 'EOF'
+write_managed_file /etc/systemd/system/ps-replaygain.service 0644 "replaygain systemd unit" <<'EOF'
 [Unit]
 Description=ReplayGain Auto-Processor for /srv/recordings
 After=network.target
@@ -216,9 +306,6 @@ RestrictAddressFamilies=AF_UNIX
 [Install]
 WantedBy=multi-user.target
 EOF
-
-chmod 644 /etc/systemd/system/ps-replaygain.service
-normalize_unix /etc/systemd/system/ps-replaygain.service
 
 systemctl daemon-reload
 systemctl enable ps-replaygain.service

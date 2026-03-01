@@ -16,6 +16,7 @@ class Recorder:
         self.kasa_device = kasa_device
         self.original_bulb_state = None
         self.encoder_process = None  # lame process
+        self._state_lock = asyncio.Lock()
 
     async def _wait_process(self, process, timeout=None):
         if process is None:
@@ -51,7 +52,7 @@ class Recorder:
         except Exception as e:
             log(f"Warning: Error killing {name}: {str(e)}")
     
-    async def start(self):
+    async def _start_unlocked(self):
         if self.recording:
             return False
             
@@ -145,8 +146,12 @@ class Recorder:
             self.process = None
             self.encoder_process = None
             return False
+
+    async def start(self):
+        async with self._state_lock:
+            return await self._start_unlocked()
     
-    async def stop(self):
+    async def _stop_unlocked(self):
         if not self.recording:
             return
         
@@ -174,12 +179,17 @@ class Recorder:
         log("Recording stopped")
         self.process = None
         self.encoder_process = None
+
+    async def stop(self):
+        async with self._state_lock:
+            await self._stop_unlocked()
     
     async def toggle(self):
-        if self.recording:
-            await self.stop()
-        else:
-            await self.start()
+        async with self._state_lock:
+            if self.recording:
+                await self._stop_unlocked()
+            else:
+                await self._start_unlocked()
 
     def is_recording(self):
         return self.recording
