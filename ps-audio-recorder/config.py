@@ -17,6 +17,9 @@ class Config:
     BULB_NAME = "Recording Light"
     BULB_CACHE_FILE = "/var/lib/audio-recorder/last_bulb.json"
     BULB_DISCOVERY_TIMEOUT = 8  # seconds
+    # If the bulb wasn't available at service startup (e.g. powered on later
+    # or received a new IP), we periodically retry discovery while idle.
+    BULB_REDISCOVERY_INTERVAL = 300  # seconds between re-discovery attempts
     RECORDING_HUE = 0
     RECORDING_SATURATION = 100
     RECORDING_BRIGHTNESS = 100

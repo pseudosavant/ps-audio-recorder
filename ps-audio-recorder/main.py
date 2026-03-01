@@ -72,7 +72,7 @@ async def detect_bt_reconnection(recorder):
                     
                     # Only trigger to STOP recording if currently recording
                     # This avoids starting recording with a reconnection
-                    if recorder.is_recording and current_time > reconnection_cooldown:
+                    if recorder.is_recording() and current_time > reconnection_cooldown:
                         log("Bluetooth device reconnected - stopping recording")
                         await asyncio.sleep(0.5)  # Brief delay to allow connection to stabilize
                         await recorder.stop()  # Only stop, don't toggle
@@ -100,6 +100,30 @@ async def detect_bt_reconnection(recorder):
             
         await asyncio.sleep(1)
 
+async def bulb_maintenance(recorder_ref):
+    """Background task that periodically tries to (re)discover the Kasa bulb
+    if we currently don't have one. Only runs discovery while not actively
+    recording to avoid introducing latency / blocking."""
+    last_attempt = 0
+    while True:
+        try:
+            await asyncio.sleep(5)  # small tick
+            if recorder_ref.kasa_device is None and not recorder_ref.recording:
+                now = time.time()
+                if now - last_attempt > Config.BULB_REDISCOVERY_INTERVAL:
+                    last_attempt = now
+                    log("Bulb maintenance: attempting rediscovery...")
+                    bulb = await find_kasa_bulb()
+                    if bulb and await test_bulb_connection(bulb):
+                        recorder_ref.kasa_device = bulb
+                        log(f"Bulb maintenance: acquired {Config.BULB_NAME}")
+                    else:
+                        log("Bulb maintenance: bulb still not found")
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            log(f"Bulb maintenance error: {e}")
+
 async def main():
     # Initialize Kasa bulb with better error handling
     try:
@@ -124,6 +148,7 @@ async def main():
     
     # Start bluetooth reconnection monitor as a background task
     bt_monitor_task = asyncio.create_task(detect_bt_reconnection(recorder))
+    bulb_task = asyncio.create_task(bulb_maintenance(recorder))
     
     log("Ready to record. Waiting for wireless button input...")
     
@@ -182,6 +207,8 @@ async def main():
                                 if event.type == ecodes.EV_KEY and event.code == Config.TRIGGER_KEY_CODE:
                                     if event.value == 1:  # Key press
                                         log(f"Remote button pressed (code: {event.code})")
+                                        if recorder.kasa_device is None:
+                                            log("Recording without bulb (not connected)")
                                         await recorder.toggle()
                         except (OSError, IOError):
                             # Remove the disconnected device
@@ -200,6 +227,8 @@ async def main():
                     key = keyboard.check_input()
                     if key == ' ':
                         log("Spacebar pressed")
+                        if recorder.kasa_device is None:
+                            log("Recording without bulb (not connected)")
                         await recorder.toggle()
                 
                 await asyncio.sleep(0.1)
@@ -211,17 +240,18 @@ async def main():
     finally:
         # Cancel the bluetooth monitor task
         bt_monitor_task.cancel()
+        bulb_task.cancel()
             
         # Stop recording if active
         await recorder.stop()
-        
+
         # Close all input devices
         for device in current_devices.values():
             try:
                 device.close()
             except:
                 pass
-                
+
         log("Script terminated")
 
 if __name__ == "__main__":
