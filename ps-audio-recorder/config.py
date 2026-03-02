@@ -57,6 +57,7 @@ class Config:
     COLOR_COMMAND_DELAY = _env_float("PS_AUDIO_COLOR_COMMAND_DELAY", 1.1)
     BRIGHTNESS_COMMAND_DELAY = _env_float("PS_AUDIO_BRIGHTNESS_COMMAND_DELAY", 1.0)
     RECORDING_PREFIX = _env_str("PS_AUDIO_RECORDING_PREFIX", "audio-recorder")
+    RECORDING_SUBDIR_FORMAT = _env_str("PS_AUDIO_RECORDING_SUBDIR_FORMAT", "%Y/%m")
     TIMESTAMP_FORMAT = _env_str("PS_AUDIO_TIMESTAMP_FORMAT", "%Y-%m-%d-%H-%M-%S")
     LOG_FILE = _env_str("PS_AUDIO_LOG_FILE", "/var/log/audio-recorder.log")
     RECORDING_EXTENSION = _env_str("PS_AUDIO_RECORDING_EXTENSION", "mp3")

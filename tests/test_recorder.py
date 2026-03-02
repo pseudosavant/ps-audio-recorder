@@ -1,4 +1,6 @@
 import asyncio
+from datetime import datetime as real_datetime
+import os
 from pathlib import Path
 from types import SimpleNamespace
 import sys
@@ -67,17 +69,29 @@ class FakeProcess:
         return self.returncode
 
 
+class _FixedDatetime:
+    @staticmethod
+    def now():
+        return real_datetime(2026, 1, 15, 8, 30, 0)
+
+
 class RecorderTests(unittest.IsolatedAsyncioTestCase):
     async def test_start_stop_lifecycle_with_mocked_processes(self):
         arecord_proc = FakeProcess(returncode=None)
         lame_proc = FakeProcess(returncode=None)
+        m = mock_open()
+        expected_dir = os.path.join("/tmp/recordings", "2026/01")
+        expected_file = os.path.join(expected_dir, "audio-recorder-2026-01-15-08-30-00.mp3")
 
         with (
             patch.object(Config, "RECORDING_DIR", "/tmp/recordings"),
+            patch.object(Config, "RECORDING_SUBDIR_FORMAT", "%Y/%m"),
             patch("recorder.log"),
-            patch("recorder.open", mock_open(), create=True),
+            patch("recorder.open", m, create=True),
+            patch("recorder.datetime", _FixedDatetime),
             patch("recorder.get_usb_audio_device", return_value=None),
             patch("recorder.os.getuid", return_value=1000, create=True),
+            patch("recorder.os.makedirs"),
             patch("recorder.grp.getgrnam", return_value=SimpleNamespace(gr_gid=1000)),
             patch("recorder.os.chown", create=True),
             patch("recorder.os.chmod"),
@@ -90,6 +104,8 @@ class RecorderTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(started)
             self.assertTrue(rec.is_recording())
             self.assertTrue(arecord_proc.stdout.closed)
+            recorder.os.makedirs.assert_called_once_with(expected_dir, exist_ok=True)
+            m.assert_called_with(expected_file, "w")
 
             await rec.stop()
             self.assertFalse(rec.is_recording())

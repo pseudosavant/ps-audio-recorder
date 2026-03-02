@@ -62,9 +62,13 @@ class Recorder:
             # Set umask for correct file permissions
             old_umask = os.umask(0o002)
             try:
+                now = datetime.now()
+                subdir = now.strftime(Config.RECORDING_SUBDIR_FORMAT).strip().strip("/\\")
+                target_dir = Config.RECORDING_DIR if not subdir else os.path.join(Config.RECORDING_DIR, subdir)
+                os.makedirs(target_dir, exist_ok=True)
                 filename = os.path.join(
-                    Config.RECORDING_DIR,
-                    f"{Config.RECORDING_PREFIX}-{datetime.now().strftime(Config.TIMESTAMP_FORMAT)}.{Config.RECORDING_EXTENSION}"
+                    target_dir,
+                    f"{Config.RECORDING_PREFIX}-{now.strftime(Config.TIMESTAMP_FORMAT)}.{Config.RECORDING_EXTENSION}"
                 )
                 
                 # Pre-create the file with correct permissions

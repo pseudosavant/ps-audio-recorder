@@ -30,6 +30,7 @@ ENV_KEYS = [
     "PS_AUDIO_COLOR_COMMAND_DELAY",
     "PS_AUDIO_BRIGHTNESS_COMMAND_DELAY",
     "PS_AUDIO_RECORDING_PREFIX",
+    "PS_AUDIO_RECORDING_SUBDIR_FORMAT",
     "PS_AUDIO_TIMESTAMP_FORMAT",
     "PS_AUDIO_LOG_FILE",
     "PS_AUDIO_RECORDING_EXTENSION",
@@ -58,6 +59,7 @@ class ConfigEnvTests(unittest.TestCase):
         self.assertEqual(cfg.SAMPLE_RATE, 48000)
         self.assertEqual(cfg.TRIGGER_KEY_CODE, 115)
         self.assertEqual(cfg.RECORDING_DIR, "/srv/recordings")
+        self.assertEqual(cfg.RECORDING_SUBDIR_FORMAT, "%Y/%m")
         self.assertEqual(cfg.LOG_FILE, "/var/log/audio-recorder.log")
 
     def test_env_overrides_apply(self):
@@ -66,6 +68,7 @@ class ConfigEnvTests(unittest.TestCase):
                 "PS_AUDIO_SAMPLE_RATE": "44100",
                 "PS_AUDIO_TRIGGER_KEY_CODE": "57",
                 "PS_AUDIO_RECORDING_DIR": "/mnt/usb/recordings",
+                "PS_AUDIO_RECORDING_SUBDIR_FORMAT": "%Y/%m/%d",
                 "PS_AUDIO_BULB_NAME": "Studio Light",
                 "PS_AUDIO_POWER_COMMAND_DELAY": "2.5",
                 "PS_AUDIO_RECORDING_HUE": "120",
@@ -76,6 +79,7 @@ class ConfigEnvTests(unittest.TestCase):
         self.assertEqual(cfg.SAMPLE_RATE, 44100)
         self.assertEqual(cfg.TRIGGER_KEY_CODE, 57)
         self.assertEqual(cfg.RECORDING_DIR, "/mnt/usb/recordings")
+        self.assertEqual(cfg.RECORDING_SUBDIR_FORMAT, "%Y/%m/%d")
         self.assertEqual(cfg.BULB_NAME, "Studio Light")
         self.assertEqual(cfg.POWER_COMMAND_DELAY, 2.5)
         self.assertEqual(cfg.RECORDING_COLOR.hue, 120)

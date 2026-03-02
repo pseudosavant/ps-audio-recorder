@@ -14,6 +14,7 @@ Designed and tested primarily on a Raspberry Pi Zero 2 W (sufficient CPU for rea
 - Kasa smart bulb tally (solid red while recording) with state restore
 - Auto-discovery of bulb named "Recording Light" (same subnet)
 - Safe timestamped filenames (`audio-recorder-YYYY-MM-DD-HH-MM-SS.mp3`)
+- Date-based folder organization (`YYYY/MM` by default)
 - Auto-stop on Bluetooth device reconnection
 - Systemd friendly, concise logging (`/var/log/audio-recorder.log`)
 - Tested with Kasa KL125 color bulb
@@ -76,7 +77,7 @@ Manual run (same script systemd uses):
 This script loads `/etc/ps-audio-recorder/ps-audio-recorder.env`, creates/activates the virtual environment, and launches the recorder.  
 
 - Press the Bluetooth remote button (mapped key code 115) or spacebar (if interactive TTY) to toggle recording.
-- MP3 files appear in `/srv/recordings`.
+- MP3 files appear in `/srv/recordings/YYYY/MM/` by default.
 
 Systemd service (installed/enabled by `setup.sh`):
 ```sh
@@ -124,6 +125,7 @@ Adjust:
 - `PS_AUDIO_BULB_NAME` (default `Recording Light`)
 - `PS_AUDIO_RECORDING_EXTENSION` (mp3)
 - `PS_AUDIO_TIMESTAMP_FORMAT` / `PS_AUDIO_RECORDING_PREFIX`
+- `PS_AUDIO_RECORDING_SUBDIR_FORMAT` (default `%Y/%m`)
 - `PS_AUDIO_RECORDING_DIR` / `PS_AUDIO_LOG_FILE`
 
 Apply changes:
