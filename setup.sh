@@ -10,7 +10,7 @@ UPGRADE_MODE=0
 APP_CONFIG_DIR="/etc/ps-audio-recorder"
 APP_ENV_FILE="$APP_CONFIG_DIR/ps-audio-recorder.env"
 SRC_APP_ENV_EXAMPLE="$SCRIPT_DIR/ps-audio-recorder/ps-audio-recorder.env.example"
-APP_HOME="/home/pi/ps-audio-recorder"
+APP_HOME="/home/pi/ps-audio-recorder/ps-audio-recorder"
 REQUIREMENTS_FILE="$SCRIPT_DIR/ps-audio-recorder/requirements.txt"
 
 usage() {
@@ -261,8 +261,8 @@ Description=Piano Studio Audio Recorder
 After=network.target
 
 [Service]
-ExecStart=/home/pi/ps-audio-recorder/start-recorder.sh
-WorkingDirectory=/home/pi/ps-audio-recorder
+ExecStart=/home/pi/ps-audio-recorder/ps-audio-recorder/start-recorder.sh
+WorkingDirectory=/home/pi/ps-audio-recorder/ps-audio-recorder
 EnvironmentFile=-/etc/ps-audio-recorder/ps-audio-recorder.env
 StandardOutput=append:/var/log/audio-recorder.log
 StandardError=append:/var/log/audio-recorder.log
@@ -273,10 +273,10 @@ User=pi
 WantedBy=multi-user.target
 EOF
 
-if [[ -f /home/pi/ps-audio-recorder/start-recorder.sh ]]; then
-    chmod +x /home/pi/ps-audio-recorder/start-recorder.sh
+if [[ -f /home/pi/ps-audio-recorder/ps-audio-recorder/start-recorder.sh ]]; then
+    chmod +x /home/pi/ps-audio-recorder/ps-audio-recorder/start-recorder.sh
 else
-    log "start-recorder.sh not found at /home/pi/ps-audio-recorder; skipping chmod"
+    log "start-recorder.sh not found at /home/pi/ps-audio-recorder/ps-audio-recorder; skipping chmod"
 fi
 
 systemctl daemon-reload

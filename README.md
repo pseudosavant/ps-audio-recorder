@@ -72,7 +72,7 @@ Automatically searches the local subnet for a TP-Link Kasa bulb whose alias matc
 
 Manual run (same script systemd uses):
 ```sh
-~/ps-audio-recorder/start-recorder.sh
+~/ps-audio-recorder/ps-audio-recorder/start-recorder.sh
 ```
 This script loads `/etc/ps-audio-recorder/ps-audio-recorder.env`, creates/activates the virtual environment, and launches the recorder.  
 

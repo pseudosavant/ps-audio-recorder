@@ -1,5 +1,8 @@
 #!/bin/bash
-cd /home/pi/ps-audio-recorder
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 
 ENV_FILE=/etc/ps-audio-recorder/ps-audio-recorder.env
 if [ -f "$ENV_FILE" ]; then
@@ -15,8 +18,11 @@ if [ ! -d ".venv" ]; then
     python3 -m venv .venv --system-site-packages
     source .venv/bin/activate
     echo "Installing dependencies..."
-    # Install python-kasa and its dependencies
-    pip install python-kasa
+    if [ -f "requirements.txt" ]; then
+        pip install -r requirements.txt
+    else
+        pip install python-kasa
+    fi
 fi
 
 # Activate the virtual environment
